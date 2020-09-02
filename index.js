@@ -2,9 +2,11 @@
 const fs = require('fs');
 const cheerio = require("cheerio");
 const request = require("request-promise")
+const lineReader = require('line-reader');
+const Promise = require('bluebird');
 
-const DOWNLOADIMAGES = true;
-const USEPROXY = false;
+const DOWNLOADIMAGES = false;
+const USEPROXY = true;
 
 const siteUrl = "https://thetvdb.com"
 const tvShowEpisodesList = "/series/one-piece/seasons/absolute/1";
@@ -56,21 +58,40 @@ async function handleEpisode(link) {
   //Runtime
   episodeInfos.runtime = $('.list-group-item')[1].children[3].children[0].data.replace('minutes', '').trim();
   //Image
-  episodeInfos.imageLink = $('.thumbnail')[0].attribs['href'];
+  try {
+    episodeInfos.imageLink = $('.thumbnail')[0].attribs['href'];
+  } catch {
+    console.log('no imagelink found for episode' + episodeInfos.episodeNumber);
+  }
   if (DOWNLOADIMAGES) {
     download(episodeInfos.imageLink, 'imgs/' + episodeInfos.episodeNumber + '.jpg', function(){
       console.log('Download ' + episodeInfos.episodeNumber + '.jpg finished.');
     })
   }
   //save as nfo
-  fs.writeFile('nfos/' + episodeInfos.episodeNumber + '.nfo',toNfo(episodeInfos) , 'utf-8', function (err) {
+  const fileName = await findEpisodeName(episodeInfos.episodeNumber);
+  fs.writeFile('nfos/' + fileName + '.nfo',toNfo(episodeInfos) , 'utf-8', function (err) {
     if (err) return console.log(err);
-    else console.log('Finished creating nfo for episode ' + episodeInfos.episodeNumber);
+    //else console.log('Finished creating nfo for episode ' + episodeInfos.episodeNumber);
   });
+}
+
+async function findEpisodeName(number) {
+  let episodename = number;
+  var eachLine = Promise.promisify(lineReader.eachLine);
+  await eachLine('list.txt', function(line) {
+    let res = line.match(/(\D|^)([0-9]{3})(\D|$)/);
+    if (res[2] === number) {
+      episodename = line;
+      console.log('Find name for episode ' + number + ': ' + episodename);
+    }
+  });
+  return episodename;
 }
 
 function toNfo(episodeInfos) {
   return ""
+  + "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\r\n"
   + "<episodedetails>\r\n"
   + "    <title>" + episodeInfos.title + "</title>\r\n"
   + "    <showtitle>" + tvShowName + "</showtitle>\r\n"
